@@ -1,7 +1,14 @@
 # GMS Passkey Allowlist Fix
 
-让「改包版」Telegram 客户端（本次实测：**NagramX**）也能正常使用
-**Google 密码管理器的通行密钥** 的 LSPosed 模块。
+让「改包版」Telegram 客户端能创建并使用 **Google 密码管理器的通行密钥**（登录不再依赖短信验证码）。
+
+**实测**：在 **NagramX** 上创建通行密钥，然后分别用 **NagramX / Ayugram / Nagram / Cherrygram / NagramXF** 登录均成功。
+
+> ### ⚠️ 必须同时安装 [HyperPasskey](https://github.com/Howard20181/HyperPasskey)
+>
+> 只装本模块**可以创建通行密钥，但无法用它登录**（登录需要 HyperPasskey 对凭据选择器 / 凭据路由的修复）。
+> 只能创建不能用等于没用，因此请把 HyperPasskey 当作硬性依赖一起装。
+> 两者互不冲突：HyperPasskey 作用域是系统/设置/安全中心/扫描器，本模块只作用于 **Google Play 服务**。
 
 ---
 
@@ -21,8 +28,9 @@
 > AI-written (vibe coding). It was tested on only two devices: Xiaomi 17 (25113PN0EC, HyperOS
 > 4.0.0.32 / Android 17 / Google Play services 26.36.35) and Xiaomi 14 (23127PN0CC, HyperOS
 > 3.0.302.0 / Android 16 / Google Play services 26.34.36), both with LSPosed IT v2.2.0
-> (libxposed API 102). Use on other devices / ROMs / GMS versions at your own risk. This was built
-> for personal use and is only updated when it breaks on the author's own device — publishing is a
+> (libxposed API 102). **Requires HyperPasskey** — without it passkeys can be created but not used
+> for logging in. Use on other devices / ROMs / GMS versions at your own risk. This was built for
+> personal use and is only updated when it breaks on the author's own device — publishing is a
 > by-product, not a maintenance commitment.
 
 ---
@@ -30,19 +38,16 @@
 > 症状：在这类 App 里点「创建通行密钥」，界面根本弹不出来，App 提示
 > 「无通行密钥应用 / 通行密钥在此设备上不可用」。
 
-**English**: An LSPosed module that lets repackaged Telegram clients (tested with **NagramX**)
-create and use passkeys with **Google Password Manager**. Such clients must assert
-`origin=https://telegram.org` to be accepted by Telegram's servers, but Google only lets
-allowlisted browsers assert origins, so GMS throws
+**English**: An LSPosed module that lets repackaged Telegram clients create and use passkeys with
+**Google Password Manager**. Such clients must assert `origin=https://telegram.org` to be accepted
+by Telegram's servers, but Google only lets allowlisted browsers assert origins, so GMS throws
 `IllegalStateException("Origin is not being returned as the calling app did not match the
-privileged allowlist")` before any UI can appear. This module hooks that check inside the
-Google Play services process and returns the stored origin instead.
+privileged allowlist")` before any UI can appear. This module hooks that check inside the Google
+Play services process and returns the stored origin instead.
 
-Requirements: LSPosed (libxposed API 101+), Android 14+, credential service set to Google.
-Install: install the APK → enable the module in LSPosed with scope **Google Play services
-(`com.google.android.gms`)** → reboot or force-stop Play services. Verify with
-`adb logcat | grep PasskeyFix` (expect `bypass installed on ...`).
-Build: `bash build.sh` (JDK 17+; toolchain is downloaded automatically).
+Requires **HyperPasskey** (without it you can create but not log in) and a credential service set
+to Google Play services. Install → enable both modules in LSPosed → reboot or force-stop Google
+Play services. Verify with `adb logcat | grep PasskeyFix`. Build: `bash build.sh` (JDK 17+).
 
 ---
 
@@ -67,21 +72,23 @@ Caused by: java.lang.IllegalStateException: Origin is not being returned as the 
 ## 适用前提
 
 - **LSPosed**（modern / libxposed API 101+；本模块以 `META-INF/xposed/*` 声明）
+- **[HyperPasskey](https://github.com/Howard20181/HyperPasskey)** — **必需**：缺它只能创建、登录会失败
 - 系统里「凭据服务 / 密码服务」必须指向 **Google**（`com.google.android.gms/...PasswordAndPasskeyService`），
   而不是厂商自带密码管理器
-- 按机制，任何会被该校验拒绝的调用方都应受益（不限于 Telegram）；但本次**只在 NagramX 上实测**，
-  其它客户端未测试
+- 按机制，任何会被该校验拒绝的调用方都应受益（不限于 Telegram）；实测范围见「已知限制」
 
-> 注意：模块只解决「GMS 白名单」这一层。App 或服务器端的其它要求（账号状态等）不受影响。
+> 注意：本模块只解决「GMS 白名单」这一层。App 或服务器端的其它要求（账号状态等）不受影响。
 
 ## 安装
 
+0. 安装并启用 **HyperPasskey**（按它自己的说明，默认作用域即可）
 1. 安装 `gms-allowlist-fix.apk`
-2. 在 LSPosed 中启用模块，作用域勾选 **Google Play 服务 (com.google.android.gms)**
+2. 在 LSPosed 中启用本模块，作用域勾选 **Google Play 服务 (com.google.android.gms)**
 3. 重启手机；或强制停止 Google Play 服务让它重新加载（`am force-stop com.google.android.gms`）
 4. 验证：`adb logcat | grep PasskeyFix`
-   - 加载时应看到 `bypass installed on ...`
-   - 创建通行密钥时应看到 `bypassed ... -> origin=https://telegram.org`
+   - 加载时应看到 `bypass installed on ...`（预装失败时由探针兜底，会打印 `pre-install ... skipped` 和
+     之后的 `allowlist check located: ...`）
+   - 创建/登录通行密钥时应看到 `bypassed ... -> origin=https://telegram.org`
 
 ## 工作原理
 
@@ -100,7 +107,11 @@ Caused by: java.lang.IllegalStateException: Origin is not being returned as the 
 
 ## 已知限制
 
-- 仅在 **NagramX** 上实测了「创建」与「登录」；其它改包版客户端（Forkgram / Nekogram 等）**未测试**
+- **必须配合 HyperPasskey**：只装本模块可以创建通行密钥，但登录会失败
+- 实测范围：
+  - **创建**：仅 **NagramX**
+  - **登录**（用 NagramX 创建的通行密钥）：**NagramX / Ayugram / Nagram / Cherrygram / NagramXF**
+  - 其它改包版客户端、以及「在其它客户端上创建」均**未测试**（新设备登录保护需要等待约一天，作者没有等待）
 - Google Play 服务若改变整套机制（不只是改混淆名），需要更新本模块
 - 需自行评估风险：本模块在 **Google Play 服务进程内** 做方法 hook（作用域仅该进程）
 
@@ -122,9 +133,10 @@ build-tools、android.jar、libxposed API 会自动下载到 `tools/`；产物�
 
 ## 致谢
 
-白名单校验的位置与绕过思路，最早由 [Howard20181/HyperPasskey](https://github.com/Howard20181/HyperPasskey)
-的 issue #27 / PR #28 公开分析（GMS 26.32.34，HyperOS/Android 17）。本模块为独立实现，
-并额外加入了不依赖类名的动态定位与两层兜底。
+- 白名单校验的位置与绕过思路，最早由 [Howard20181/HyperPasskey](https://github.com/Howard20181/HyperPasskey)
+  的 issue #27 / PR #28 公开分析（GMS 26.32.34，HyperOS/Android 17）。本模块为独立实现，
+  并额外加入了不依赖类名的动态定位与两层兜底。
+- 本模块**必须与 HyperPasskey 配合使用**（登录环节依赖它对凭据选择器 / 凭据路由的修复）。
 
 ## License
 
