@@ -1,0 +1,9 @@
+* text=auto
+*.sh text eol=lf
+build.sh text eol=lf
+*.java text eol=lf
+*.md text eol=lf
+*.xml text eol=lf
+*.yml text eol=lf
+*.prop text eol=lf
+*.list text eol=lf
