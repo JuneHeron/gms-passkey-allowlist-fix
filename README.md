@@ -1,6 +1,6 @@
 # GMS Passkey Allowlist Fix
 
-让「改包版」App（Telegram 的 Nagram / NagramX / Forkgram / Nekogram 等）也能正常使用
+让「改包版」Telegram 客户端（本次实测：**NagramX**）也能正常使用
 **Google 密码管理器的通行密钥** 的 LSPosed 模块。
 
 ---
@@ -8,15 +8,19 @@
 > ## ⚠️ 作者说明（请先读）
 >
 > - 作者**没有任何安卓开发经验**，本项目 **100% 由 AI 编写（vibe coding）**，作者只负责提需求、测试和反馈。
-> - **仅在一台设备上实测通过**：小米 17（25113PN0EC）/ 澎湃 OS 4.0.0.32.XPCCNXM（Android 17，SDK 37）/
->   Google Play 服务 26.36.35 / LSPosed IT v2.2.0（libxposed API 102）。
->   其它机型、ROM、GMS 版本请自行测试与调整，作者无法提供技术支持。
+> - **仅在以下两台设备上实测通过**：
+>   - 小米 17（25113PN0EC）/ 澎湃 OS 4.0.0.32.XPCCNXM（Android 17，SDK 37）/ Google Play 服务 26.36.35
+>   - 小米 14（23127PN0CC）/ 澎湃 OS 3.0.302.0.WNCCNXM（Android 16，SDK 36）/ Google Play 服务 26.34.36
+>
+>   两者均使用 LSPosed IT v2.2.0（libxposed API 102）。其它机型、ROM、GMS 版本请自行测试与调整，
+>   作者无法提供技术支持。
 > - 作者做这个**纯粹是为了修自己设备上的问题**：**只有在自己设备上失效时才会继续更新**。
 >   发布出来只是顺手分享，不承诺维护，也不保证处理 issue / PR（欢迎讨论，但不一定回复）。
 >
 > **Author's note** — The author has no Android development experience; this project is 100%
-> AI-written (vibe coding). It was tested on exactly one device: Xiaomi 17 (25113PN0EC) running
-> HyperOS 4.0.0.32 (Android 17, SDK 37) with Google Play services 26.36.35 and LSPosed IT v2.2.0
+> AI-written (vibe coding). It was tested on only two devices: Xiaomi 17 (25113PN0EC, HyperOS
+> 4.0.0.32 / Android 17 / Google Play services 26.36.35) and Xiaomi 14 (23127PN0CC, HyperOS
+> 3.0.302.0 / Android 16 / Google Play services 26.34.36), both with LSPosed IT v2.2.0
 > (libxposed API 102). Use on other devices / ROMs / GMS versions at your own risk. This was built
 > for personal use and is only updated when it breaks on the author's own device — publishing is a
 > by-product, not a maintenance commitment.
@@ -26,10 +30,10 @@
 > 症状：在这类 App 里点「创建通行密钥」，界面根本弹不出来，App 提示
 > 「无通行密钥应用 / 通行密钥在此设备上不可用」。
 
-**English**: An LSPosed module that lets repackaged apps (Telegram forks such as Nagram /
-NagramX / Forkgram / Nekogram) create and use passkeys with **Google Password Manager**.
-Repackaged clients must assert `origin=https://telegram.org` to be accepted by Telegram's
-servers, but Google only lets allowlisted browsers assert origins, so GMS throws
+**English**: An LSPosed module that lets repackaged Telegram clients (tested with **NagramX**)
+create and use passkeys with **Google Password Manager**. Such clients must assert
+`origin=https://telegram.org` to be accepted by Telegram's servers, but Google only lets
+allowlisted browsers assert origins, so GMS throws
 `IllegalStateException("Origin is not being returned as the calling app did not match the
 privileged allowlist")` before any UI can appear. This module hooks that check inside the
 Google Play services process and returns the stored origin instead.
@@ -65,7 +69,8 @@ Caused by: java.lang.IllegalStateException: Origin is not being returned as the 
 - **LSPosed**（modern / libxposed API 101+；本模块以 `META-INF/xposed/*` 声明）
 - 系统里「凭据服务 / 密码服务」必须指向 **Google**（`com.google.android.gms/...PasswordAndPasskeyService`），
   而不是厂商自带密码管理器
-- 适用于任何会被该校验拒绝的调用方，**不限于 Telegram**（第三方浏览器等同样受益）
+- 按机制，任何会被该校验拒绝的调用方都应受益（不限于 Telegram）；但本次**只在 NagramX 上实测**，
+  其它客户端未测试
 
 > 注意：模块只解决「GMS 白名单」这一层。App 或服务器端的其它要求（账号状态等）不受影响。
 
@@ -82,17 +87,20 @@ Caused by: java.lang.IllegalStateException: Origin is not being returned as the 
 
 两层定位，互为兜底：
 
-1. **按已知混淆名预装**：当前 GMS 26.36.35 上是类 `nft` 的方法 `b(String)`
+1. **按已知混淆名预装**：例如 GMS 26.36.35 上是类 `nft` 的方法 `b(String)`
+   （其它 GMS 版本混淆名不同，例如 26.34.36 上是 `nel.b`）
 2. **异常调用栈探针**：hook `IllegalStateException(String)` 构造器，凡是消息含
    `privileged allowlist` 的异常，就用它自身的调用栈逐帧定位做校验的方法
    （逐帧尝试 `Class.forName(name, false, appClassLoader)`，**跳过加载不出来的帧** ——
-   否则会选到框架/模块自身的混淆类），因此 GMS 更新后即使混淆名改变也能自动找到
+   否则会选到框架/模块自身的混淆类）。预装失败时由它兜底，因此 GMS 更新后即使混淆名改变
+   也会自动找到
 
 命中后把「抛异常」改成「返回该校验对象里保存的 origin（以 http 开头的 String 字段）」，
 校验随即通过。
 
 ## 已知限制
 
+- 仅在 **NagramX** 上实测了「创建」与「登录」；其它改包版客户端（Forkgram / Nekogram 等）**未测试**
 - Google Play 服务若改变整套机制（不只是改混淆名），需要更新本模块
 - 需自行评估风险：本模块在 **Google Play 服务进程内** 做方法 hook（作用域仅该进程）
 
@@ -109,7 +117,8 @@ build-tools、android.jar、libxposed API 会自动下载到 `tools/`；产物�
 仅供学习研究与个人使用。使用第三方修改过的客户端本身存在风险；本模块可能随 Google Play
 服务更新而失效。请自行评估并承担风险。
 
-另见开头的**作者说明**：作者无安卓开发经验、项目 100% 由 AI 编写、仅单机测试、仅在自己设备失效时更新。
+另见开头的**作者说明**：作者无安卓开发经验、项目 100% 由 AI 编写、仅在上述两台设备上测试过、
+仅在自己设备失效时更新。
 
 ## 致谢
 
